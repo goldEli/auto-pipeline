@@ -65,10 +65,16 @@ pnpm start
 pnpm run dev
 ```
 
-### Run with custom environment variables
+### Run the script with auto-run manual jobs
 
 ```bash
-GITLAB_PROJECT_ID=12345 REF_NAME=develop pnpm start
+AUTO_RUN_MANUAL_JOBS=true pnpm start
+```
+
+### Run with custom environment variables and auto-run manual jobs
+
+```bash
+GITLAB_PROJECT_ID=12345 REF_NAME=develop AUTO_RUN_MANUAL_JOBS=true pnpm start
 ```
 
 ## Configuration
@@ -87,6 +93,7 @@ GITLAB_PROJECT_ID=12345 REF_NAME=develop pnpm start
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `BRANCH` | Alias for `REF_NAME` (deprecated) | `main` |
+| `AUTO_RUN_MANUAL_JOBS` | Automatically run all manual jobs in the pipeline | `true` |
 | `VARIABLE_<KEY>` | Pipeline variables (prefix with `VARIABLE_`) | `VARIABLE_ENV=production` |
 
 ## Pipeline Variables
@@ -145,6 +152,33 @@ The script includes comprehensive error handling for:
 - Project not found
 - Invalid branch name
 - API rate limiting
+
+## Troubleshooting
+
+### Pipeline is created but not running
+
+If the pipeline is successfully created but doesn't start running, check the following:
+
+1. **GitLab CI/CD Rules**: Verify your `.gitlab-ci.yml` file has the correct rules for pipeline execution
+2. **Manual Approval**: Check if the pipeline requires manual approval in the GitLab UI
+3. **Runner Availability**: Ensure there are available GitLab runners for your project
+4. **Permissions**: Verify your private token has sufficient permissions (`api` scope is required)
+5. **Branch/Tag Existence**: Confirm the specified `REF_NAME` exists in your repository
+6. **CI/CD Enabled**: Ensure CI/CD is enabled in your GitLab project settings
+7. **Pipeline Limits**: Check if your project has reached any pipeline limits
+
+### Debug Mode
+
+Run the script with the updated logging to get more detailed information:
+
+```bash
+pnpm start
+```
+
+The script will now output:
+- Full API request and response details
+- Pipeline status and source information
+- Troubleshooting suggestions for pending pipelines
 
 ## License
 
