@@ -120,13 +120,13 @@ class GitLabPipelineTrigger {
     }
   }
 
-  // Interactive branch selection for a project
-  private async selectBranch(project: Project): Promise<string> {
+  // Interactive branch selection
+  private async selectBranch(): Promise<string> {
     try {
       const result = await enquirer.prompt({
         type: 'input',
         name: 'branch',
-        message: `🔀 Enter branch name for ${project.name}:`,
+        message: '🔀 Enter branch name to use for all projects:',
         initial: 'main',
         validate: (value: string) => value.trim() ? true : 'Branch name cannot be empty',
       }) as { branch: string };
@@ -315,13 +315,16 @@ class GitLabPipelineTrigger {
       selectedProjects.forEach(project => {
         console.log(`   - ${project.name}`);
       });
-      
-      // Step 2: Select branches and trigger pipelines
+
+      // Step 2: Select branch once for all projects
+      const branch = await this.selectBranch();
+      console.log(`\n🔀 Using branch '${branch}' for all selected projects`);
+
+      // Step 3: Trigger pipelines for all projects
       for (const project of selectedProjects) {
-        const branch = await this.selectBranch(project);
         await this.triggerPipeline(project, branch);
       }
-      
+
       console.log('\n🎉 All pipelines triggered successfully!');
     } catch (error) {
       console.error('💥 Interactive flow failed:', error);
