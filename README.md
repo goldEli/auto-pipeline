@@ -1,191 +1,99 @@
-# GitLab Auto-Trigger Pipeline Script
+# Auto Pipeline
 
-A TypeScript-based script to automatically trigger GitLab pipelines using the GitLab API. This script is compatible with ES modules, uses pnpm as the package manager, and stores sensitive information in environment variables.
+GitLab Pipeline Auto-Trigger Script with interactive and command-line modes.
 
 ## Features
 
-- ✅ ES Module compatibility
-- ✅ TypeScript for type safety
-- ✅ pnpm as package manager
-- ✅ Environment variables for sensitive information
-- ✅ User-friendly CLI output
-- ✅ Proper error handling
-- ✅ GitLab API integration for pipeline triggering
-- ✅ Support for pipeline variables
-
-## Prerequisites
-
-- Node.js 18+ 
-- pnpm package manager
-- GitLab account with API access
-- GitLab private token with `api` scope
+- Trigger pipelines for multiple GitLab projects
+- Auto-run manual jobs (configurable via `AUTO_RUN_MANUAL_JOBS=true`)
+- Interactive project and branch selection
+- Command-line argument support for non-interactive usage
 
 ## Setup
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd auto-pipeline
-   ```
-
-2. **Install dependencies**
+1. Install dependencies:
    ```bash
    pnpm install
    ```
 
-3. **Configure environment variables**
-   - Copy the example environment file:
-     ```bash
-     cp .env.example .env
-     ```
-   - Edit `.env` and add your GitLab configuration:
-     ```env
-     GITLAB_HOST=https://gitlab.com
-     GITLAB_PROJECT_ID=your-project-id
-     GITLAB_PRIVATE_TOKEN=your-private-token
-     REF_NAME=main
-     ```
-
-4. **Build the project** (optional)
+2. Configure environment variables in `.env`:
    ```bash
-   pnpm run build
+   cp .env.example .env
+   ```
+   
+   Required variables:
+   - `GITLAB_HOST` - GitLab instance URL (e.g., `https://git.weex.tech`)
+   - `GITLAB_PRIVATE_TOKEN` - GitLab personal access token
+   
+   Optional variables:
+   - `AUTO_RUN_MANUAL_JOBS=true` - Auto-trigger manual jobs after pipeline creation
+
+3. Configure projects in `projects.json`:
+   ```json
+   [
+     {
+       "id": "39",
+       "name": "Web Separation"
+     },
+     ...
+   ]
    ```
 
 ## Usage
 
-### Run the script
+### Interactive Mode
+
+Run without arguments for interactive project and branch selection:
 
 ```bash
-pnpm start
+pnpm run start
 ```
 
-### Run in development mode (with watch)
+### Command-Line Mode
+
+Use `-p` and `-b` flags to skip interactive prompts:
 
 ```bash
-pnpm run dev
+# Single project
+pnpm run start -p "Web Separation"
+
+# Multiple projects (comma-separated)
+pnpm run start -p "Web Separation,Web Core,Web Trade"
+
+# With branch specification
+pnpm run start -p "Web Separation" -b "develop"
+
+# Multiple projects with branch
+pnpm run start -p "Web Separation,Web Core" -b "feature/new"
 ```
 
-### Run the script with auto-run manual jobs
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-b, --branch <branch>` | Branch name to trigger pipelines (default: `main`) |
+| `-p, --project <projects>` | Project names (comma-separated) from `projects.json` |
+
+### Global Command
+
+Add to `~/.zshrc` for global access:
 
 ```bash
-AUTO_RUN_MANUAL_JOBS=true pnpm start
+alias run_pipeline='cd /Users/eli/Documents/github/auto-pipeline && pnpm run start'
 ```
 
-### Run with custom environment variables and auto-run manual jobs
+Then use:
 
 ```bash
-GITLAB_PROJECT_ID=12345 REF_NAME=develop AUTO_RUN_MANUAL_JOBS=true pnpm start
+run_pipeline
+run_pipeline -p "Web Separation" -b "develop"
 ```
 
-### Fetch all GitLab projects
+## Commands
 
-```bash
-pnpm run fetch-projects
-```
-
-## Configuration
-
-### Required Environment Variables
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `GITLAB_HOST` | GitLab instance URL | `https://gitlab.com` |
-| `GITLAB_PROJECT_ID` | GitLab project ID | `12345` |
-| `GITLAB_PRIVATE_TOKEN` | GitLab private token with API scope | `glpat-xxxxxxxxxxxx` |
-| `REF_NAME` | Branch or tag to trigger pipeline on | `main` or `v1.0.0` |
-
-### Optional Environment Variables
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `BRANCH` | Alias for `REF_NAME` (deprecated) | `main` |
-| `AUTO_RUN_MANUAL_JOBS` | Automatically run all manual jobs in the pipeline | `true` |
-| `VARIABLE_<KEY>` | Pipeline variables (prefix with `VARIABLE_`) | `VARIABLE_ENV=production` |
-
-## Pipeline Variables
-
-To pass variables to your GitLab pipeline, simply add them to your `.env` file with the prefix `VARIABLE_`:
-
-```env
-VARIABLE_ENV=production
-VARIABLE_VERSION=1.0.0
-VARIABLE_DEPLOY_TYPE=blue-green
-```
-
-These variables will be automatically included in the pipeline trigger request.
-
-## GitLab API Reference
-
-This script uses the GitLab API endpoint:
-- [Trigger a pipeline](https://docs.gitlab.com/ee/api/pipelines.html#trigger-a-pipeline)
-
-## Project Structure
-
-```
-auto-pipeline/
-├── src/
-│   └── index.ts          # Main script entry point
-├── .env.example          # Environment variables template
-├── .gitignore            # Git ignore rules
-├── package.json          # Project configuration
-├── tsconfig.json         # TypeScript configuration
-└── README.md             # This file
-```
-
-## Script Output
-
-The script provides user-friendly output:
-
-```
-🚀 Triggering GitLab pipeline...
-📋 Project: https://gitlab.com/projects/12345
-🔀 Branch: main
-📝 Pipeline Variables:
-   - ENV: production
-   - VERSION: 1.0.0
-✅ Pipeline triggered successfully!
-📌 Pipeline ID: 123456
-🌐 Pipeline URL: https://gitlab.com/group/project/-/pipelines/123456
-📊 Status: pending
-🔍 SHA: a1b2c3d4e5f6g7h8i9j0
-```
-
-## Error Handling
-
-The script includes comprehensive error handling for:
-- Missing environment variables
-- Invalid GitLab credentials
-- Project not found
-- Invalid branch name
-- API rate limiting
-
-## Troubleshooting
-
-### Pipeline is created but not running
-
-If the pipeline is successfully created but doesn't start running, check the following:
-
-1. **GitLab CI/CD Rules**: Verify your `.gitlab-ci.yml` file has the correct rules for pipeline execution
-2. **Manual Approval**: Check if the pipeline requires manual approval in the GitLab UI
-3. **Runner Availability**: Ensure there are available GitLab runners for your project
-4. **Permissions**: Verify your private token has sufficient permissions (`api` scope is required)
-5. **Branch/Tag Existence**: Confirm the specified `REF_NAME` exists in your repository
-6. **CI/CD Enabled**: Ensure CI/CD is enabled in your GitLab project settings
-7. **Pipeline Limits**: Check if your project has reached any pipeline limits
-
-### Debug Mode
-
-Run the script with the updated logging to get more detailed information:
-
-```bash
-pnpm start
-```
-
-The script will now output:
-- Full API request and response details
-- Pipeline status and source information
-- Troubleshooting suggestions for pending pipelines
-
-## License
-
-ISC
+| Command | Description |
+|---------|-------------|
+| `pnpm run start` | Run the pipeline trigger script |
+| `pnpm run dev` | Run with watch mode for development |
+| `pnpm run build` | Compile TypeScript to JavaScript |
+| `pnpm run fetch-projects` | Fetch all projects from GitLab API |

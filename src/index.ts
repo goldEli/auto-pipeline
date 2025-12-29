@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import axios, { AxiosInstance } from 'axios';
 import enquirer from 'enquirer';
 import fs from 'fs/promises';
+import { Command } from 'commander';
 
 // Load environment variables
 dotenv.config();
@@ -59,12 +60,16 @@ interface GitLabConfig {
   autoRunManualJobs: boolean;
 }
 
+interface CLIOptions {
+  branch?: string;
+  project?: string;
+}
+
 class GitLabPipelineTrigger {
   private config: GitLabConfig;
   private client: AxiosInstance;
 
   constructor() {
-    // Validate environment variables
     const requiredEnvVars = ['GITLAB_HOST', 'GITLAB_PRIVATE_TOKEN'];
     for (const envVar of requiredEnvVars) {
       if (!process.env[envVar]) {
@@ -78,7 +83,6 @@ class GitLabPipelineTrigger {
       autoRunManualJobs: process.env.AUTO_RUN_MANUAL_JOBS === 'true',
     };
 
-    // Initialize axios client
     this.client = axios.create({
       baseURL: `${this.config.host}/api/v4`,
       headers: {
@@ -88,7 +92,6 @@ class GitLabPipelineTrigger {
     });
   }
 
-  // Load projects from JSON file
   private async loadProjects(): Promise<Project[]> {
     try {
       const data = await fs.readFile('./projects.json', 'utf8');
@@ -99,7 +102,6 @@ class GitLabPipelineTrigger {
     }
   }
 
-  // Interactive project selection
   private async selectProjects(projects: Project[]): Promise<Project[]> {
     try {
       const selectedIds = await enquirer.prompt({
@@ -120,7 +122,6 @@ class GitLabPipelineTrigger {
     }
   }
 
-  // Interactive branch selection
   private async selectBranch(): Promise<string> {
     try {
       const result = await enquirer.prompt({
@@ -139,11 +140,9 @@ class GitLabPipelineTrigger {
     }
   }
 
-  // Extract pipeline variables from environment variables
   private getPipelineVariables(): PipelineVariable[] {
     const variables: PipelineVariable[] = [];
     
-    // Look for environment variables that start with VARIABLE_ and add them to variables array
     for (const [key, value] of Object.entries(process.env)) {
       if (key.startsWith('VARIABLE_') && value !== undefined) {
         const variableKey = key.replace('VARIABLE_', '');
@@ -157,10 +156,9 @@ class GitLabPipelineTrigger {
     return variables;
   }
 
-  // Fetch all jobs for a pipeline
   private async getPipelineJobs(projectId: string, pipelineId: number): Promise<Job[]> {
     try {
-      console.log(`📋 Fetching jobs for pipeline ${pipelineId}...`);
+      // console.log(`📋 Fetching jobs for pipeline ${pipelineId}...`);
       const response = await this.client.get<Job[]>(
         `/projects/${projectId}/pipelines/${pipelineId}/jobs`
       );
@@ -171,10 +169,9 @@ class GitLabPipelineTrigger {
     }
   }
 
-  // Run a manual job
   private async runManualJob(projectId: string, jobId: number): Promise<void> {
     try {
-      console.log(`▶️  Running manual job ${jobId}...`);
+      // console.log(`▶️  Running manual job ${jobId}...`);
       await this.client.post(
         `/projects/${projectId}/jobs/${jobId}/play`
       );
@@ -185,16 +182,13 @@ class GitLabPipelineTrigger {
     }
   }
 
-  // Run all manual jobs for a pipeline
   private async runAllManualJobs(projectId: string, pipelineId: number): Promise<void> {
     try {
-      console.log(`🤖 Starting auto-run of manual jobs for pipeline ${pipelineId}`);
+      // console.log(`🤖 Starting auto-run of manual jobs for pipeline ${pipelineId}`);
       
-      // Add delay to allow GitLab to create jobs after pipeline is triggered
-      console.log('⏳ Waiting 1 seconds for GitLab to initialize pipeline jobs...');
+      // console.log('⏳ Waiting 1 seconds for GitLab to initialize pipeline jobs...');
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Retry fetching jobs up to 3 times if no manual jobs are found initially
       let manualJobs: Job[] = [];
       let retryCount = 0;
       const maxRetries = 3;
@@ -202,18 +196,17 @@ class GitLabPipelineTrigger {
       while (manualJobs.length === 0 && retryCount < maxRetries) {
         retryCount++;
         if (retryCount > 1) {
-          console.log(`⏳ Retry ${retryCount-1}/${maxRetries-1}: Waiting 1 seconds before checking again...`);
+          // console.log(`⏳ Retry ${retryCount-1}/${maxRetries-1}: Waiting 1 seconds before checking again...`);
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
-        console.log(`📋 Fetching jobs for pipeline ${pipelineId} (attempt ${retryCount}/${maxRetries})...`);
+        // console.log(`📋 Fetching jobs for pipeline ${pipelineId} (attempt ${retryCount}/${maxRetries})...`);
         const jobs = await this.getPipelineJobs(projectId, pipelineId);
         
-        // Log all jobs found for debugging
         console.log(`📋 Total jobs found: ${jobs.length}`);
-        jobs.forEach(job => {
-          console.log(`   - ${job.name} (${job.stage}) - Status: ${job.status}, Manual: ${job.manual}, ID: ${job.id}`);
-        });
+        // jobs.forEach(job => {
+        //   console.log(`   - ${job.name} (${job.stage}) - Status: ${job.status}, Manual: ${job.manual}, ID: ${job.id}`);
+        // });
         
         manualJobs = jobs.filter(job => job.status === 'manual');
         
@@ -228,14 +221,12 @@ class GitLabPipelineTrigger {
       }
       
       console.log(`📋 Found ${manualJobs.length} manual jobs:`);
-      manualJobs.forEach(job => {
-        console.log(`   - ${job.name} (${job.stage}) - ID: ${job.id}`);
-      });
+      // manualJobs.forEach(job => {
+      //   console.log(`   - ${job.name} (${job.stage}) - ID: ${job.id}`);
+      // });
       
-      // Run manual jobs sequentially (to respect stage dependencies)
       for (const job of manualJobs) {
         await this.runManualJob(projectId, job.id);
-        // Wait a bit between job triggers to avoid API rate limits
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
@@ -246,18 +237,18 @@ class GitLabPipelineTrigger {
     }
   }
 
-  // Trigger GitLab pipeline for a single project
   async triggerPipeline(project: Project, ref: string): Promise<PipelineResponse> {
     try {
+      console.log("==================RUN====================");
       console.log(`\n🚀 Triggering pipeline for project: ${project.name}`);
       console.log(`📋 Project: ${this.config.host}/projects/${project.id}`);
       console.log(`🔀 Branch: ${ref}`);
 
       const variables = this.getPipelineVariables();
-      if (variables.length > 0) {
-        console.log('📝 Pipeline Variables:');
-        variables.forEach(v => console.log(`   - ${v.key}: ${v.value}`));
-      }
+      // if (variables.length > 0) {
+      //   console.log('📝 Pipeline Variables:');
+      //   variables.forEach(v => console.log(`   - ${v.key}: ${v.value}`));
+      // }
 
       const requestBody: TriggerPipelineRequest = {
         ref,
@@ -270,17 +261,16 @@ class GitLabPipelineTrigger {
       );
 
       console.log('✅ Pipeline triggered successfully!');
-      console.log(`📌 Pipeline ID: ${response.data.id}`);
-      console.log(`🌐 Pipeline URL: ${response.data.web_url}`);
-      console.log(`📊 Status: ${response.data.status}`);
-      console.log(`🔍 SHA: ${response.data.sha}`);
+      // console.log(`📌 Pipeline ID: ${response.data.id}`);
+      // console.log(`🌐 Pipeline URL: ${response.data.web_url}`);
+      // console.log(`📊 Status: ${response.data.status}`);
+      // console.log(`🔍 SHA: ${response.data.sha}`);
 
-      // Run manual jobs if enabled
       if (this.config.autoRunManualJobs) {
-        console.log('🤖 Auto-run manual jobs is enabled');
+        // console.log('🤖 Auto-run manual jobs is enabled');
         await this.runAllManualJobs(project.id, response.data.id);
       } else {
-        console.log('🔄 Auto-run manual jobs is disabled. Set AUTO_RUN_MANUAL_JOBS=true in .env to enable.');
+        // console.log('🔄 Auto-run manual jobs is disabled. Set AUTO_RUN_MANUAL_JOBS=true in .env to enable.');
       }
 
       return response.data;
@@ -298,10 +288,43 @@ class GitLabPipelineTrigger {
     }
   }
 
-  // Interactive flow for project and branch selection
+  async runWithOptions(options: CLIOptions): Promise<void> {
+    const allProjects = await this.loadProjects();
+    
+    if (options.project) {
+      const projectNames = options.project.split(',').map(name => name.trim());
+      const selectedProjects = allProjects.filter(p => projectNames.includes(p.name));
+
+      // console.log(`\n📋 Selected ${projectNames} project(s) from command line:`);
+
+      
+      if (selectedProjects.length === 0) {
+        console.error('❌ No matching projects found for:', projectNames.join(', '));
+        console.log('📋 Available projects:');
+        allProjects.forEach(p => console.log(`   - ${p.name}`));
+        process.exit(1);
+      }
+      
+      // console.log(`\n📋 Selected ${selectedProjects.length} project(s) from command line:`);
+      // selectedProjects.forEach(project => {
+      //   console.log(`   - ${project.name}`);
+      // });
+      
+      const branch = options.branch || 'main';
+      // console.log(`\n🔀 Using branch '${branch}' for all selected projects`);
+      
+      for (const project of selectedProjects) {
+        await this.triggerPipeline(project, branch);
+      }
+      
+      console.log('\n🎉 All pipelines triggered successfully!');
+    } else {
+      await this.interactiveFlow();
+    }
+  }
+
   async interactiveFlow(): Promise<void> {
     try {
-      // Step 1: Load and select projects
       const allProjects = await this.loadProjects();
       console.log(`\n📋 Found ${allProjects.length} projects:`);
       const selectedProjects = await this.selectProjects(allProjects);
@@ -311,16 +334,14 @@ class GitLabPipelineTrigger {
         return;
       }
       
-      console.log(`\n📋 Selected ${selectedProjects.length} project(s):`);
-      selectedProjects.forEach(project => {
-        console.log(`   - ${project.name}`);
-      });
+      // console.log(`\n📋 Selected ${selectedProjects.length} project(s):`);
+      // selectedProjects.forEach(project => {
+      //   console.log(`   - ${project.name}`);
+      // });
 
-      // Step 2: Select branch once for all projects
       const branch = await this.selectBranch();
-      console.log(`\n🔀 Using branch '${branch}' for all selected projects`);
+      // console.log(`\n🔀 Using branch '${branch}' for all selected projects`);
 
-      // Step 3: Trigger pipelines for all projects
       for (const project of selectedProjects) {
         await this.triggerPipeline(project, branch);
       }
@@ -333,16 +354,33 @@ class GitLabPipelineTrigger {
   }
 }
 
-// Main execution
+function parseOptions(): CLIOptions {
+  const program = new Command();
+  
+  program
+    .name('run-pipeline')
+    .description('Trigger GitLab pipelines for selected projects')
+    .option('-b, --branch <branch>', 'Branch name to trigger pipelines (default: main)')
+    .option('-p, --project <projects>', 'Project names (comma-separated) to trigger pipelines')
+    .parse(process.argv);
+
+  const options = program.opts<CLIOptions>();
+  
+  return {
+    branch: options.branch,
+    project: options.project,
+  };
+}
+
 async function main() {
   try {
+    const options = parseOptions();
     const trigger = new GitLabPipelineTrigger();
-    await trigger.interactiveFlow();
+    await trigger.runWithOptions(options);
   } catch (error) {
     console.error('💥 Execution failed. Exiting with code 1.');
     process.exit(1);
   }
 }
 
-// Run the script
 main();
