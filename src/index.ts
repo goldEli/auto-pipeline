@@ -191,8 +191,8 @@ class GitLabPipelineTrigger {
       console.log(`🤖 Starting auto-run of manual jobs for pipeline ${pipelineId}`);
       
       // Add delay to allow GitLab to create jobs after pipeline is triggered
-      console.log('⏳ Waiting 5 seconds for GitLab to initialize pipeline jobs...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      console.log('⏳ Waiting 1 seconds for GitLab to initialize pipeline jobs...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Retry fetching jobs up to 3 times if no manual jobs are found initially
       let manualJobs: Job[] = [];
@@ -202,8 +202,8 @@ class GitLabPipelineTrigger {
       while (manualJobs.length === 0 && retryCount < maxRetries) {
         retryCount++;
         if (retryCount > 1) {
-          console.log(`⏳ Retry ${retryCount-1}/${maxRetries-1}: Waiting 3 seconds before checking again...`);
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          console.log(`⏳ Retry ${retryCount-1}/${maxRetries-1}: Waiting 1 seconds before checking again...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
         console.log(`📋 Fetching jobs for pipeline ${pipelineId} (attempt ${retryCount}/${maxRetries})...`);
