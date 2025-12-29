@@ -77,6 +77,12 @@ AUTO_RUN_MANUAL_JOBS=true pnpm start
 GITLAB_PROJECT_ID=12345 REF_NAME=develop AUTO_RUN_MANUAL_JOBS=true pnpm start
 ```
 
+### Fetch all GitLab projects
+
+```bash
+pnpm run fetch-projects
+```
+
 ## Configuration
 
 ### Required Environment Variables

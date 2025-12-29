@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
+    "fetch-projects": "tsx src/fetch-projects.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

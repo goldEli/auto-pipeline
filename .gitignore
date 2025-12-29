@@ -42,3 +42,5 @@ coverage
 *.pid
 *.seed
 *.pid.lock
+
+projects.json
