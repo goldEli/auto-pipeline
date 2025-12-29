@@ -51,8 +51,6 @@ interface Job {
 interface Project {
   id: string;
   name: string;
-  path: string;
-  defaultBranch: string;
 }
 
 interface GitLabConfig {
@@ -110,7 +108,7 @@ class GitLabPipelineTrigger {
         message: '📋 Select one or more projects to trigger pipelines:',
         choices: projects.map(project => ({
           name: project.id,
-          message: `${project.name} (${project.path}) - Default: ${project.defaultBranch}`,
+          message: `${project.name}`,
         })),
       }) as { projects: string[] };
       
@@ -129,7 +127,7 @@ class GitLabPipelineTrigger {
         type: 'input',
         name: 'branch',
         message: `🔀 Enter branch name for ${project.name}:`,
-        initial: project.defaultBranch,
+        initial: 'main',
         validate: (value: string) => value.trim() ? true : 'Branch name cannot be empty',
       }) as { branch: string };
       
@@ -137,7 +135,7 @@ class GitLabPipelineTrigger {
     } catch (error) {
       console.error('❌ Branch selection cancelled:', error);
       process.exit(0);
-      return project.defaultBranch;
+      return 'main';
     }
   }
 
@@ -305,6 +303,7 @@ class GitLabPipelineTrigger {
     try {
       // Step 1: Load and select projects
       const allProjects = await this.loadProjects();
+      console.log(`\n📋 Found ${allProjects.length} projects:`);
       const selectedProjects = await this.selectProjects(allProjects);
       
       if (selectedProjects.length === 0) {
@@ -314,7 +313,7 @@ class GitLabPipelineTrigger {
       
       console.log(`\n📋 Selected ${selectedProjects.length} project(s):`);
       selectedProjects.forEach(project => {
-        console.log(`   - ${project.name} (${project.path})`);
+        console.log(`   - ${project.name}`);
       });
       
       // Step 2: Select branches and trigger pipelines
