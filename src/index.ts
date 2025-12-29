@@ -1,5 +1,7 @@
 import dotenv from 'dotenv';
 import axios, { AxiosInstance } from 'axios';
+import enquirer from 'enquirer';
+import fs from 'fs/promises';
 
 // Load environment variables
 dotenv.config();
@@ -46,11 +48,16 @@ interface Job {
   allow_failure: boolean;
 }
 
+interface Project {
+  id: string;
+  name: string;
+  path: string;
+  defaultBranch: string;
+}
+
 interface GitLabConfig {
   host: string;
-  projectId: string;
   privateToken: string;
-  ref: string;
   autoRunManualJobs: boolean;
 }
 
@@ -60,7 +67,7 @@ class GitLabPipelineTrigger {
 
   constructor() {
     // Validate environment variables
-    const requiredEnvVars = ['GITLAB_HOST', 'GITLAB_PROJECT_ID', 'GITLAB_PRIVATE_TOKEN', 'REF_NAME'];
+    const requiredEnvVars = ['GITLAB_HOST', 'GITLAB_PRIVATE_TOKEN'];
     for (const envVar of requiredEnvVars) {
       if (!process.env[envVar]) {
         throw new Error(`Missing required environment variable: ${envVar}`);
@@ -69,9 +76,7 @@ class GitLabPipelineTrigger {
 
     this.config = {
       host: process.env.GITLAB_HOST!,
-      projectId: process.env.GITLAB_PROJECT_ID!,
       privateToken: process.env.GITLAB_PRIVATE_TOKEN!,
-      ref: process.env.REF_NAME || process.env.BRANCH || 'main',
       autoRunManualJobs: process.env.AUTO_RUN_MANUAL_JOBS === 'true',
     };
 
@@ -83,6 +88,57 @@ class GitLabPipelineTrigger {
         'Content-Type': 'application/json',
       },
     });
+  }
+
+  // Load projects from JSON file
+  private async loadProjects(): Promise<Project[]> {
+    try {
+      const data = await fs.readFile('./projects.json', 'utf8');
+      return JSON.parse(data);
+    } catch (error) {
+      console.error('❌ Failed to load projects from projects.json:', error);
+      throw error;
+    }
+  }
+
+  // Interactive project selection
+  private async selectProjects(projects: Project[]): Promise<Project[]> {
+    try {
+      const selectedIds = await enquirer.prompt({
+        type: 'multiselect',
+        name: 'projects',
+        message: '📋 Select one or more projects to trigger pipelines:',
+        choices: projects.map(project => ({
+          name: project.id,
+          message: `${project.name} (${project.path}) - Default: ${project.defaultBranch}`,
+        })),
+      }) as { projects: string[] };
+      
+      return projects.filter(project => selectedIds.projects.includes(project.id));
+    } catch (error) {
+      console.error('❌ Project selection cancelled:', error);
+      process.exit(0);
+      return [];
+    }
+  }
+
+  // Interactive branch selection for a project
+  private async selectBranch(project: Project): Promise<string> {
+    try {
+      const result = await enquirer.prompt({
+        type: 'input',
+        name: 'branch',
+        message: `🔀 Enter branch name for ${project.name}:`,
+        initial: project.defaultBranch,
+        validate: (value: string) => value.trim() ? true : 'Branch name cannot be empty',
+      }) as { branch: string };
+      
+      return result.branch.trim();
+    } catch (error) {
+      console.error('❌ Branch selection cancelled:', error);
+      process.exit(0);
+      return project.defaultBranch;
+    }
   }
 
   // Extract pipeline variables from environment variables
@@ -104,11 +160,11 @@ class GitLabPipelineTrigger {
   }
 
   // Fetch all jobs for a pipeline
-  private async getPipelineJobs(pipelineId: number): Promise<Job[]> {
+  private async getPipelineJobs(projectId: string, pipelineId: number): Promise<Job[]> {
     try {
       console.log(`📋 Fetching jobs for pipeline ${pipelineId}...`);
       const response = await this.client.get<Job[]>(
-        `/projects/${this.config.projectId}/pipelines/${pipelineId}/jobs`
+        `/projects/${projectId}/pipelines/${pipelineId}/jobs`
       );
       return response.data;
     } catch (error) {
@@ -118,11 +174,11 @@ class GitLabPipelineTrigger {
   }
 
   // Run a manual job
-  private async runManualJob(jobId: number): Promise<void> {
+  private async runManualJob(projectId: string, jobId: number): Promise<void> {
     try {
       console.log(`▶️  Running manual job ${jobId}...`);
       await this.client.post(
-        `/projects/${this.config.projectId}/jobs/${jobId}/play`
+        `/projects/${projectId}/jobs/${jobId}/play`
       );
       console.log(`✅ Manual job ${jobId} started successfully`);
     } catch (error) {
@@ -132,7 +188,7 @@ class GitLabPipelineTrigger {
   }
 
   // Run all manual jobs for a pipeline
-  private async runAllManualJobs(pipelineId: number): Promise<void> {
+  private async runAllManualJobs(projectId: string, pipelineId: number): Promise<void> {
     try {
       console.log(`🤖 Starting auto-run of manual jobs for pipeline ${pipelineId}`);
       
@@ -153,7 +209,7 @@ class GitLabPipelineTrigger {
         }
         
         console.log(`📋 Fetching jobs for pipeline ${pipelineId} (attempt ${retryCount}/${maxRetries})...`);
-        const jobs = await this.getPipelineJobs(pipelineId);
+        const jobs = await this.getPipelineJobs(projectId, pipelineId);
         
         // Log all jobs found for debugging
         console.log(`📋 Total jobs found: ${jobs.length}`);
@@ -180,7 +236,7 @@ class GitLabPipelineTrigger {
       
       // Run manual jobs sequentially (to respect stage dependencies)
       for (const job of manualJobs) {
-        await this.runManualJob(job.id);
+        await this.runManualJob(projectId, job.id);
         // Wait a bit between job triggers to avoid API rate limits
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
@@ -192,12 +248,12 @@ class GitLabPipelineTrigger {
     }
   }
 
-  // Trigger GitLab pipeline
-  async triggerPipeline(): Promise<PipelineResponse> {
+  // Trigger GitLab pipeline for a single project
+  async triggerPipeline(project: Project, ref: string): Promise<PipelineResponse> {
     try {
-      console.log('🚀 Triggering GitLab pipeline...');
-      console.log(`📋 Project: ${this.config.host}/projects/${this.config.projectId}`);
-      console.log(`🔀 Branch: ${this.config.ref}`);
+      console.log(`\n🚀 Triggering pipeline for project: ${project.name}`);
+      console.log(`📋 Project: ${this.config.host}/projects/${project.id}`);
+      console.log(`🔀 Branch: ${ref}`);
 
       const variables = this.getPipelineVariables();
       if (variables.length > 0) {
@@ -206,12 +262,12 @@ class GitLabPipelineTrigger {
       }
 
       const requestBody: TriggerPipelineRequest = {
-        ref: this.config.ref,
+        ref,
         variables: variables.length > 0 ? variables : undefined,
       };
 
       const response = await this.client.post<PipelineResponse>(
-        `/projects/${this.config.projectId}/pipeline`,
+        `/projects/${project.id}/pipeline`,
         requestBody
       );
 
@@ -224,7 +280,7 @@ class GitLabPipelineTrigger {
       // Run manual jobs if enabled
       if (this.config.autoRunManualJobs) {
         console.log('🤖 Auto-run manual jobs is enabled');
-        await this.runAllManualJobs(response.data.id);
+        await this.runAllManualJobs(project.id, response.data.id);
       } else {
         console.log('🔄 Auto-run manual jobs is disabled. Set AUTO_RUN_MANUAL_JOBS=true in .env to enable.');
       }
@@ -232,15 +288,45 @@ class GitLabPipelineTrigger {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error('❌ Failed to trigger pipeline:', error.message);
+        console.error(`❌ Failed to trigger pipeline for ${project.name}:`, error.message);
         if (error.response) {
           console.error('📋 Error Details:', error.response.data);
           console.error('🔢 Status Code:', error.response.status);
         }
       } else {
-        console.error('❌ Unexpected error:', error);
+        console.error(`❌ Unexpected error for ${project.name}:`, error);
       }
       throw error;
+    }
+  }
+
+  // Interactive flow for project and branch selection
+  async interactiveFlow(): Promise<void> {
+    try {
+      // Step 1: Load and select projects
+      const allProjects = await this.loadProjects();
+      const selectedProjects = await this.selectProjects(allProjects);
+      
+      if (selectedProjects.length === 0) {
+        console.log('📋 No projects selected. Exiting.');
+        return;
+      }
+      
+      console.log(`\n📋 Selected ${selectedProjects.length} project(s):`);
+      selectedProjects.forEach(project => {
+        console.log(`   - ${project.name} (${project.path})`);
+      });
+      
+      // Step 2: Select branches and trigger pipelines
+      for (const project of selectedProjects) {
+        const branch = await this.selectBranch(project);
+        await this.triggerPipeline(project, branch);
+      }
+      
+      console.log('\n🎉 All pipelines triggered successfully!');
+    } catch (error) {
+      console.error('💥 Interactive flow failed:', error);
+      process.exit(1);
     }
   }
 }
@@ -249,7 +335,7 @@ class GitLabPipelineTrigger {
 async function main() {
   try {
     const trigger = new GitLabPipelineTrigger();
-    await trigger.triggerPipeline();
+    await trigger.interactiveFlow();
   } catch (error) {
     console.error('💥 Execution failed. Exiting with code 1.');
     process.exit(1);
